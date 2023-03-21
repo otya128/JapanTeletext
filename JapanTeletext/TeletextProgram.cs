@@ -120,7 +120,7 @@
             }
             // 番組データ長
             dataBlock[17] = 0;
-            dataBlock[18] = 10;
+            dataBlock[18] = 0;
             dataBlock[19] = ETX;
             SetDataUnitCRC16(new[] { dataBlock });
             return dataBlock;

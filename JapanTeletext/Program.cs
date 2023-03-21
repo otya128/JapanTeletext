@@ -118,7 +118,7 @@ static void EncodeDataLine(IntPtr line, int start, int end, byte[] dataLine)
             var index = (i - start) * len / (end - start);
             if (index >= (24 + 272))
                 break;
-            var p1 = ((dataLine[index / 8] >> (index % 8)) & 1) == 1 ? (byte)179 : (byte)0;
+            var p1 = ((dataLine[index / 8] >> (index % 8)) & 1) == 1 ? (byte)230 : (byte)0;
             p[i * 2 + 1] = p1;
         }
     }
