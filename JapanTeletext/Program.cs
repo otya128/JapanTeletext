@@ -87,10 +87,6 @@ var dataLines = programData.ToDataLines();
 
 var iterator = new CDeckLinkIterator();
 iterator.Next(out var deckLink);
-var attrs = (IDeckLinkProfileAttributes)deckLink;
-attrs.GetFlag(_BMDDeckLinkAttributeID.BMDDeckLinkVANCRequires10BitYUVVideoFrames, out var requires10bit);
-if (requires10bit != 0)
-    throw new Exception();
 var deckLinkOutput = (IDeckLinkOutput)deckLink;
 deckLinkOutput.EnableVideoOutput(_BMDDisplayMode.bmdModeNTSC, _BMDVideoOutputFlags.bmdVideoOutputVANC);
 deckLinkOutput.SetScheduledFrameCompletionCallback(new FrameCompletionCallback());
@@ -104,22 +100,42 @@ static void EncodeDataLine(IntPtr line, int start, int end, byte[] dataLine)
 {
     unsafe
     {
-        var p = (byte*)line;
+        var p = (uint*)line;
         var len = 24 + 272 + 6;
-        for (int i = 0; i < 720; i += 2)
+        for (int i = 0; i < 720; i += 3)
         {
-            p[i * 2 + 0] = 128; // Cb
-            p[i * 2 + 2] = 128; // Cr
-            p[i * 2 + 1] = 16; // Y
-            p[i * 2 + 3] = 16; // Y
+            // Cr0| Y0|Cb0
+            //  Y2|Cb2| Y1
+            // Cb4| Y3|Cr2
+            //  Y5|Cr4| Y4
+            p[i / 3 * 2 + 0] &= ~0x000003ffu;
+            p[i / 3 * 2 + 0] |= 512; // Cb0
+            p[i / 3 * 2 + 0] &= ~0x000ffc00u;
+            p[i / 3 * 2 + 0] |= 64 << 10; // Y0
+            p[i / 3 * 2 + 0] &= ~0x3ff00000u;
+            p[i / 3 * 2 + 0] |= 512 << 20; // Cr0
         }
         for (int i = start; i < end; i++)
         {
             var index = (i - start) * len / (end - start);
             if (index >= (24 + 272))
                 break;
-            var p1 = ((dataLine[index / 8] >> (index % 8)) & 1) == 1 ? (byte)230 : (byte)0;
-            p[i * 2 + 1] = p1;
+            var p1 = ((dataLine[index / 8] >> (index % 8)) & 1) == 1 ? 920u : 0u;
+            switch (i % 3)
+            {
+                case 0:
+                    p[i / 3 * 2 + 0] &= ~0x000ffc00u;
+                    p[i / 3 * 2 + 0] |= p1 << 10;
+                    break;
+                case 1:
+                    p[i / 3 * 2 + 1] &= ~0x000003ffu;
+                    p[i / 3 * 2 + 1] |= p1;
+                    break;
+                case 2:
+                    p[i / 3 * 2 + 1] &= ~0x3ff00000u;
+                    p[i / 3 * 2 + 1] |= p1 << 20;
+                    break;
+            }
         }
     }
 }
@@ -135,7 +151,7 @@ while (true)
     for (int i = 0; i < (dataLines.Count + 1) / 2 * 2 + 2; i += singleField ? 1 : 2)
     {
         deckLinkOutput.CreateVideoFrame(width, height, width * 2, _BMDPixelFormat.bmdFormat8BitYUV, _BMDFrameFlags.bmdFrameFlagDefault, out var dataLineFrame);
-        deckLinkOutput.CreateAncillaryData(_BMDPixelFormat.bmdFormat8BitYUV, out var anc);
+        deckLinkOutput.CreateAncillaryData(_BMDPixelFormat.bmdFormat10BitYUV, out var anc);
         dataLineFrame.GetBytes(out var bytes);
         GenerateTestPattern(bytes, dataLineFrame.GetRowBytes(), width, height);
         var dataLine21h = dataLines.Count <= i ? dummyDataLine : dataLines[i].dataLine;
